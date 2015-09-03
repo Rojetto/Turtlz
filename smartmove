@@ -1,0 +1,6 @@
+local args = {...}
+os.loadAPI("navi")
+navi.navigate(vector.new(tonumber(args[1]), tonumber(args[2]), tonumber(args[3])))
+if args[4] ~= nil then
+  navi.rotate(tonumber(args[4]))
+end

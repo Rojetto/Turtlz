@@ -1,0 +1,7 @@
+local args = {...}
+os.loadAPI("navi")
+if not navi.simpleMove(vector.new(tonumber(args[1]), tonumber(args[2]), tonumber(args[3])))
+then print("Something was in the way, ABORT, ABORT!!!") end
+if args[4] ~= nil then
+  navi.rotate(tonumber(args[4]))
+end

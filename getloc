@@ -1,0 +1,5 @@
+os.loadAPI("navi")
+local pos = navi.getPos()
+local f = navi.getF()
+print(tostring(pos.x).." "..tostring(pos.y).." "..tostring(pos.z))
+print(tostring(f))

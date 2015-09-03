@@ -1,0 +1,318 @@
+function getPos()
+	return pos
+end
+
+function getF()
+	return f
+end
+
+function getLoc()
+	return {pos = pos, f = f}
+end
+
+function getMap()
+	return map
+end
+
+function fToDirection(fToConvert)
+	if fToConvert == 0 then return "SOUTH"
+	elseif fToConvert == 1 then return "WEST"
+	elseif fToConvert == 2 then return "NORTH"
+	elseif fToConvert == 3 then return "EAST"
+	end
+end
+
+function forward()
+	if not turtle.detect() then
+		turtle.forward()
+		pos = pos + getFacingVector()
+		locToDisk(pos, f)
+		scan()
+		return true
+	else
+		return false
+	end
+end
+
+function back()
+	turtle.back()
+	pos = pos - getFacingVector()
+	locToDisk(pos, f)
+	scan()
+end
+
+function up()
+	if not turtle.detectUp() then
+		turtle.up()
+		pos = pos + vector.new(0, 1, 0)
+		locToDisk(pos, f)
+		scan()
+		return true
+	else
+		return false
+	end
+end
+
+function down()
+	if not turtle.detectDown() then
+		turtle.down()
+		pos = pos - vector.new(0, 1, 0)
+		locToDisk(pos, f)
+		scan()
+		return true
+	else
+		return false
+	end
+end
+
+function left()
+	turtle.turnLeft()
+	f = (f + 3) % 4
+	locToDisk(pos, f)
+	scan()
+end
+
+function right()
+	turtle.turnRight()
+	f = (f + 1) % 4
+	locToDisk(pos, f)
+	scan()
+end
+
+function rotate(targetF)
+	if targetF == (f + 1) % 4 then right()
+	elseif targetF == (f + 3) % 4 then left()
+	elseif targetF % 4 ~= f then
+		right()
+		right()
+	end
+end
+
+function getFacingVector()
+	if f == 0 then return vector.new(0, 0, 1)
+	elseif f == 1 then return vector.new(-1, 0, 0)
+	elseif f == 2 then return vector.new(0, 0, -1)
+	elseif f == 3 then return vector.new(1, 0, 0)
+	end
+end
+
+function locToDisk(posToSave, fToSave)
+	local h = fs.open(".loc", "w")
+	h.write(textutils.serialize({pos = posToSave, f = fToSave}))
+	h.close()
+end
+
+function locFromDisk()
+	if fs.exists(".loc") then
+		local h = fs.open(".loc", "r")
+		local loc = textutils.unserialize(h.readAll())
+		h.close()
+		return loc.pos, loc.f
+	else
+		print("WARNING: Couldn't find turtle position on disk, defaulting to 0 0 0 0! Use setloc to change.")
+		return vector.new(0, 0, 0), 0
+	end
+end
+
+function mapToDisk(mapToSave)
+	local h = fs.open(".map", "w")
+	h.write(textutils.serialize(mapToSave))
+	h.close()
+end
+
+function mapFromDisk()
+	if fs.exists(".map") then
+		local h = fs.open(".map", "r")
+		local savedMap = textutils.unserialize(h.readAll())
+		h.close()
+		return savedMap
+	else
+		return {}
+	end
+end
+
+function simpleMove(targetPos)
+	local delta = targetPos - pos
+	if delta.x ~= 0 then
+		if delta.x > 0 then rotate(3) else rotate(1) end
+		for i = 1, math.abs(delta.x) do
+			if not forward() then return false end
+		end
+	end
+	if delta.z ~= 0 then
+		if delta.z > 0 then rotate(0) else rotate(2) end
+		for i = 1, math.abs(delta.z) do
+			if not forward() then return false end
+		end
+	end
+	if delta.y > 0 then
+		for i = 1, delta.y do
+			if not up() then return false end
+		end
+	elseif delta.y < 0 then
+		for i = 1, math.abs(delta.y) do
+			if not down() then return false end
+		end
+	end
+
+	return true
+end
+
+function scan()
+	map[(pos + vector.new(0, 1, 0)):tostring()] = turtle.detectUp()
+	map[(pos + getFacingVector()):tostring()] = turtle.detect()
+	map[(pos - vector.new(0, 1, 0)):tostring()] = turtle.detectDown()
+	mapToDisk(map)
+end
+
+function navigate(targetPos)
+	while true do
+		local path = findPath(pos, targetPos)
+
+		if path == nil then
+			print("Couldn't find path to destination :/")
+			return false
+		--else
+		--	print("Path length: "..tostring(#path))
+		end
+
+		local success = true
+
+		for _, node in ipairs(path) do
+			if not simpleMove(node) then
+				--print("Something's in the way, recalculating...")
+				success = false
+				break
+			end
+		end
+
+		if success then return true end
+	end
+end
+
+function navigateAndRotate(loc)
+	navigate(loc.pos)
+	rotate(loc.f)
+end
+
+function findPath(start, goal)
+	local openList = {}
+	start.g = 0
+	start.h = dist(start, goal)
+	start.f = start.g + start.h
+	table.insert(openList, start)
+	local closedList = {}
+	local goalNode = nil
+
+	while #openList > 0 do
+		local current = openList[1]
+		for i = 1, #openList do
+			if openList[i].f < current.f then current = openList[i] end
+		end
+
+		if nodesEqual(current, goal) then
+			goalNode = current
+			break
+		else
+			table.insert(closedList, current)
+			removeNodeFromTable(openList, current)
+			local neighbors = getNeighbors(current, goal)
+
+			for _, neighbor in ipairs(neighbors) do
+				if not nodeInTable(closedList, neighbor) then
+					if (not nodeInTable(openList, neighbor)) or neighbor.g < getNodeFromTable(openList, neighbor).g then
+						removeNodeFromTable(openList, neighbor)
+						table.insert(openList, neighbor)
+					end
+				end
+			end
+		end
+		yield()
+	end
+
+	if goalNode == nil then return nil end
+
+	local reversePath = {}
+	local current = goalNode
+	while current ~= nil do
+		table.insert(reversePath, current)
+		current = current.parent
+	end
+
+	local path = {}
+	for i = #reversePath, 1, -1 do
+		table.insert(path, vector.new(reversePath[i].x, reversePath[i].y, reversePath[i].z))
+	end
+
+	return path
+end
+
+function nodesEqual(node1, node2)
+	return node1.x == node2.x and node1.y == node2.y and node1.z == node2.z
+end
+
+function dist(node1, node2)
+	return math.sqrt((node1.x - node2.x)^2 + (node1.y - node2.y)^2 + (node1.z - node2.z)^2)
+end
+
+function getNeighbors(node, goal)
+	local neighbors = {}
+	table.insert(neighbors, node + vector.new(1, 0, 0))
+	table.insert(neighbors, node + vector.new(-1, 0, 0))
+	table.insert(neighbors, node + vector.new(0, 1, 0))
+	table.insert(neighbors, node + vector.new(0, -1, 0))
+	table.insert(neighbors, node + vector.new(0, 0, 1))
+	table.insert(neighbors, node + vector.new(0, 0, -1))
+
+	for i = #neighbors, 1, -1 do
+		if map[neighbors[i]:tostring()] == true then
+			removeNodeFromTable(neighbors, neighbors[i])
+		end
+	end
+
+	for _, neighbor in ipairs(neighbors) do
+		neighbor.parent = node
+		neighbor.g = node.g + 1
+		neighbor.h = dist(neighbor, goal)
+		neighbor.f = neighbor.g + neighbor.h
+	end
+
+	return neighbors
+end
+
+function nodeInTable(t, node)
+	for _, n in ipairs(t) do
+		if nodesEqual(n, node) then return true end
+	end
+	return false
+end
+
+function removeNodeFromTable(t, node)
+	for i = #t, 1, -1 do
+		if nodesEqual(t[i], node) then
+			table.remove(t, i)
+		end
+	end
+end
+
+function getNodeFromTable(t, node)
+	for _, n in ipairs(t) do
+		if nodesEqual(n, node) then return n end
+	end
+	return nil
+end
+
+function yield()
+	if yieldTime then
+		if os.clock() - yieldTime > 2 then
+			os.queueEvent("fake")
+			os.pullEvent("fake")
+			yieldTime = nil
+		end
+	else
+		yieldTime = os.clock()
+	end
+end
+
+pos, f = locFromDisk()
+map = mapFromDisk()

@@ -1,0 +1,6 @@
+local args = {...}
+os.loadAPI("navi")
+navi.pos = vector.new(tonumber(args[1]), tonumber(args[2]), tonumber(args[3]))
+navi.f = tonumber(args[4])
+navi.locToDisk(navi.pos, navi.f)
+shell.run("getloc")

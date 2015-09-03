@@ -1,0 +1,344 @@
+os.loadAPI("navi")
+
+function dataFromDisk()
+	if fs.exists(".hoarder") then
+		local h = fs.open(".hoarder", "r")
+		local data = textutils.unserialize(h.readAll())
+		h.close()
+		return data.inLoc, data.outLoc, data.chests
+	else
+		print("WARNING: No hoarder data found on disk!")
+		return {pos=vector.new(0, 0, 0), f=0}, {pos=vector.new(0, 0, 0), f=1}, {}
+	end
+end
+
+function dataToDisk(inLoc, outLoc, chests)
+	h = fs.open(".hoarder", "w")
+	h.write(textutils.serialize({inLoc=inLoc, outLoc=outLoc, chests=chests}))
+	h.close()
+end
+
+function checkChests()
+	for i, v in ipairs(chests) do
+		navi.navigateAndRotate(v.loc)
+		v.content = getChestContent("front")
+	end
+
+	dataToDisk(inLoc, outLoc, chests)
+end
+
+function getChestContent(side)
+	local chest = peripheral.wrap(side)
+	local content = {}
+
+	for i = 1, chest.getInventorySize() do
+		table.insert(content, stackToTable(chest.getStackInSlot(i)))
+	end
+
+	return content
+end
+
+function getChestIndexInFront()
+	for i, chest in ipairs(chests) do
+		if navi.nodesEqual(chest.loc.pos, navi.getPos()) and chest.loc.f == navi.getF() then
+			return i
+		end
+	end
+end
+
+function checkChestInFront()
+	chests[getChestIndexInFront()].content = getChestContent("front")
+	dataToDisk(inLoc, outLoc, chests)
+end
+
+function sortInput()
+	navi.navigateAndRotate(inLoc)
+	while not isEmpty(getChestContent("front")) do
+		local inputChest = peripheral.wrap("front")
+		for i = 1, inputChest.getInventorySize() do
+			inputChest.pushItem(navi.fToDirection((navi.getF() + 2) % 4), i)
+		end
+
+		local inv = peripheral.wrap("left")
+		for i = 1, inv.getInventorySize() do
+			while inv.getStackInSlot(i) ~= nil and inv.getStackInSlot(i).qty > 0 do
+				local chestIndex, amount, intoSlot = getFirstChestWithOpenStack(inv.getStackInSlot(i))
+
+				if chestIndex ~= nil then
+					navi.navigateAndRotate(chests[chestIndex].loc)
+					inv.pushItem(navi.fToDirection(navi.getF()), i, amount, intoSlot)
+					checkChestInFront()
+				else
+					navi.navigateAndRotate(chests[getFirstChestWithEmptyStack()].loc)
+					inv.pushItem(navi.fToDirection(navi.getF()), i)
+					checkChestInFront()
+				end
+			end
+		end
+
+		navi.navigateAndRotate(inLoc)
+	end
+end
+
+function getFirstChestWithOpenStack(stackToFit)
+	for i, chest in ipairs(chests) do
+		for j, stack in ipairs(chest.content) do
+			if stackToFit.id == stack.id and stackToFit.dmg == stack.dmg and stackToFit.display_name == stack.display_name and stack.qty < stack.max_size then
+				return i, math.min(stackToFit.qty, stack.max_size - stack.qty), j
+			end
+		end
+	end
+end
+
+function getFirstChestWithEmptyStack()
+	for i, chest in ipairs(chests) do
+		for j, stack in ipairs(chest.content) do
+			if stack.qty == 0 then return i end
+		end
+	end
+end
+
+function isEmpty(content)
+	for _, stack in ipairs(content) do
+		if stack.qty ~= 0 then return false end
+	end
+
+	return true
+end
+
+function stackToTable(stack)
+	if stack ~= nil then
+		return {mod_id=stack.mod_id, raw_name=stack.raw_name, max_size=stack.max_size, max_dmg=stack.max_dmg, dmg=stack.dmg, qty=stack.qty, id=stack.id, display_name=stack.display_name, name=stack.name}
+	else
+		return {mod_id="", raw_name="", max_size=0, max_dmg=0, dmg=0, qty=0, id="", display_name="", name=""}
+	end
+end
+
+function clear()
+	term.clear()
+	term.setCursorPos(1, 1)
+end
+
+function waitForKey(...)
+	while true do
+		local event, key = os.pullEvent("char")
+
+		for _, keyName in ipairs(arg) do
+			if key == keyName then
+				return key
+			end
+		end
+	end
+end
+
+function orderMenu(order)
+	clear()
+	print("A: Add item")
+	print("F: Complete")
+	print("Your order:")
+
+	for i, v in pairs(order) do
+		print(i..": "..tostring(v))
+	end
+
+	return waitForKey("a", "f")
+end
+
+function addItemMenu(storage)
+	clear()
+	print("Search:")
+	local query = read()
+	local results = {}
+	for display_name, t in pairs(storage) do
+		if display_name:lower():find(query:lower()) then
+			results[display_name] = t
+		end
+	end
+
+	local numberedResults = {}
+	for display_name, t in pairs(results) do
+		t.display_name = display_name
+		table.insert(numberedResults, t)
+	end
+
+	clear()
+	for number, item in ipairs(numberedResults) do
+		print(tostring(number).." "..item.display_name..": "..tostring(item.qty))
+	end
+
+	print("Number:")
+	local number = tonumber(read())
+	print("Amount:")
+	local amount = tonumber(read())
+
+	if number > #numberedResults or amount > numberedResults[number].qty then
+		print("Invalid selection")
+		os.sleep(3)
+		return
+	end
+
+	return numberedResults[number].display_name, amount
+end
+
+function getStorageLocations()
+	local locations = {}
+
+	for chestIndex, chest in ipairs(chests) do
+		for slot, stack in ipairs(chest.content) do
+			if stack.qty > 0 then
+				if locations[stack.display_name] == nil then
+					locations[stack.display_name] = {qty = 0, locs = {}, max_size = stack.max_size}
+				end
+
+				locations[stack.display_name].qty = locations[stack.display_name].qty + stack.qty
+				table.insert(locations[stack.display_name].locs, {chestIndex = chestIndex, slot = slot, qty = stack.qty})
+			end
+		end
+	end
+
+	for display_name, t in pairs(locations) do
+		for i = #t.locs, 1, -1 do
+			if t.locs[i].qty == t.max_size then
+				local entry = t.locs[i]
+				table.remove(t.locs, i)
+				table.insert(t.locs, entry)
+			end
+		end
+	end
+
+	return locations
+end
+
+function fetchItems(order)
+	local storage = getStorageLocations()
+	local items = {}
+
+	for display_name, amount in pairs(order) do
+		local remaining = amount
+
+		while remaining > 0 do
+			local entry = storage[display_name].locs[1]
+			table.remove(storage[display_name].locs, 1)
+
+			local howMuchToGet = math.min(remaining, entry.qty)
+			entry.qty = howMuchToGet
+
+			table.insert(items, entry)
+
+			remaining = remaining - howMuchToGet
+		end
+	end
+
+	table.sort(items, stackEntryOrder)
+	--os.loadAPI("fileutil")
+	--fileutil.toFile(items)
+
+	for _, entry in ipairs(items) do
+		navi.navigateAndRotate(chests[entry.chestIndex].loc)
+		local chest = peripheral.wrap("front")
+		chest.pushItem(navi.fToDirection((navi.getF() + 2) % 4), entry.slot, entry.qty)
+
+		checkChestInFront()
+
+		local inv = peripheral.wrap("left")
+		if inv.getStackInSlot(inv.getInventorySize()) ~= nil then
+			dumpIntoOutput()
+		end
+	end
+
+	dumpIntoOutput()
+end
+
+function dumpIntoOutput()
+	navi.navigateAndRotate(outLoc)
+	local inv = peripheral.wrap("left")
+
+	for i = 1, inv.getInventorySize() do
+		inv.pushItem(navi.fToDirection(navi.getF()), i)
+	end
+end
+
+function stackEntryOrder(entry1, entry2)
+	if entry1.chestIndex <= entry2.chestIndex then
+		return true
+	else
+		return false
+	end
+end
+
+inLoc, outLoc, chests = dataFromDisk()
+
+args = {...}
+if #args == 1 then
+	if args[1] == "in" then
+		inLoc = navi.getLoc()
+	elseif args[1] == "out" then
+		outLoc = navi.getLoc()
+	elseif args[1] == "chest" then
+		table.insert(chests, {loc=navi.getLoc(), content={}})
+	end
+
+	dataToDisk(inLoc, outLoc, chests)
+else
+	--os.loadAPI("fileutil")
+	--fileutil.toFile(getStorageLocations())
+
+	while true do
+		navi.navigateAndRotate(inLoc)
+		clear()
+		print("F: Fetch")
+		print("S: Sort")
+		print("U: Update storage")
+		print("R: Refuel")
+		print()
+		print("Fuel: "..tostring(turtle.getFuelLevel()))
+		if (turtle.getFuelLevel() < 100) then
+			print()
+			print("WARNING! FUEL LEVEL LOW!")
+		end
+
+		local key = waitForKey("f", "s", "u", "r")
+
+		clear()
+
+		if key == "s" then
+			if isEmpty(getChestContent("front")) then
+				print("Nothing to sort.")
+				os.sleep(3)
+			else
+				print("Sorting items from input chest into storage...")
+				sortInput()
+			end
+		elseif key == "u" then
+			print("Updating storage database...")
+			checkChests()
+		elseif key == "r" then
+			textutils.slowPrint("Refueling...", 10)
+			os.sleep(1)
+			turtle.refuel()
+		elseif key == "f" then
+			local order = {}
+			local storage = getStorageLocations()
+
+			while true do
+				local orderKey = orderMenu(order)
+
+				if orderKey == "a" then
+					local display_name, qty = addItemMenu(storage)
+					if display_name ~= nil then
+						if order[display_name] == nil then
+							order[display_name] = 0
+						end
+						order[display_name] = order[display_name] + qty
+						storage[display_name].qty = storage[display_name].qty - qty
+					end
+				elseif orderKey == "f" then
+					clear()
+					print("Fetching items...")
+					fetchItems(order)
+					break
+				end
+			end
+		end
+	end
+end

@@ -1,0 +1,6 @@
+function toFile(thing)
+  local h=fs.open(".temp", "w")
+  h.write(textutils.serialize(thing))
+  h.close()
+  print("Written to .temp")
+end

@@ -1,0 +1,15 @@
+local chest=peripheral.wrap("left")
+while true do
+  local stack=chest.getStackInSlot(1)
+  if stack~=lastStack then
+    term.clear()
+    term.setCursorPos(1,1)
+    local s=""
+    for i,v in pairs(stack) do
+      s=s..i..":\""..tostring(v).."\" "
+    end
+    print(s)
+  end
+  local lastStack=stack
+  os.sleep(1)
+end
