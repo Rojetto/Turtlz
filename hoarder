@@ -135,13 +135,19 @@ function orderMenu(order)
 	clear()
 	print("A: Add item")
 	print("F: Complete")
-	print("Your order:")
+	print("C: Cancel")
 
+	local empty = true
 	for i, v in pairs(order) do
 		print(i..": "..tostring(v))
+		empty = false
 	end
 
-	return waitForKey("a", "f")
+	if empty then
+		print("Your order is empty")
+	end
+
+	return waitForKey("a", "f", "c")
 end
 
 function addItemMenu(storage)
@@ -162,18 +168,36 @@ function addItemMenu(storage)
 	end
 
 	clear()
+	if #numberedResults == 0 then
+		print("No results")
+		os.sleep(2)
+		return
+	end
+
 	for number, item in ipairs(numberedResults) do
 		print(tostring(number).." "..item.display_name..": "..tostring(item.qty))
 	end
 
 	print("Number:")
-	local number = tonumber(read())
-	print("Amount:")
-	local amount = tonumber(read())
-
-	if number > #numberedResults or amount > numberedResults[number].qty then
+	local numberInput = read()
+	if numberInput == "" then return end
+	local number = tonumber(numberInput)
+	if number < 1 or number > #numberedResults then
 		print("Invalid selection")
-		os.sleep(3)
+		os.sleep(2)
+		return
+	end
+	print("Amount:")
+	local amountInput = read()
+	local amount = numberedResults[number].qty
+
+	if amountInput ~= "" then
+		amount = tonumber(amountInput)
+	end
+
+	if amount > numberedResults[number].qty or amount < 0 then
+		print("Invalid amount")
+		os.sleep(2)
 		return
 	end
 
@@ -336,6 +360,8 @@ else
 					clear()
 					print("Fetching items...")
 					fetchItems(order)
+					break
+				elseif orderKey == "c" then
 					break
 				end
 			end
