@@ -1,0 +1,119 @@
+os.loadAPI("navi")
+os.loadAPI("fileutil")
+
+function dataFromDisk()
+	if fs.exists(".wheat") then
+		local h = fs.open(".wheat", "r")
+		local data = textutils.unserialize(h.readAll())
+		h.close()
+
+		return data.chestLoc, data.fields
+	else
+		return {pos = vector.new(0, 0, 0), f = 0}, {}
+	end
+end
+
+function dataToDisk(chestLoc, fields)
+	local h = fs.open(".wheat", "w")
+	h.write(textutils.serialize({chestLoc = chestLoc, fields = fields}))
+	h.close()
+end
+
+function sign(n)
+	if n > 0 then
+		return 1
+	elseif n < 0 then
+		return -1
+	else
+		return 0
+	end
+end
+
+function farm()
+	turtle.select(1)
+
+	for _, field in ipairs(fields) do
+		local startAndEnd = {}
+		startAndEnd[vector.new(field.x1, field.y, field.z1)] = vector.new(field.x2, field.y, field.z2)
+		startAndEnd[vector.new(field.x1, field.y, field.z2)] = vector.new(field.x2, field.y, field.z1)
+		startAndEnd[vector.new(field.x2, field.y, field.z1)] = vector.new(field.x1, field.y, field.z2)
+		startAndEnd[vector.new(field.x2, field.y, field.z2)] = vector.new(field.x1, field.y, field.z1)
+
+		local startPos = nil
+		local endPos = nil
+		local lastDistance = 100000
+
+		for s, e in pairs(startAndEnd) do
+			local distance = #(navi.findPath(navi.getPos(), s))
+
+			if distance < lastDistance then
+				lastDistance = distance
+				startPos = s
+				endPos = e
+			end
+		end
+
+		local positions = {}
+
+		for x = startPos.x, endPos.x, sign(endPos.x - startPos.x) * 2 do
+			for z = startPos.z, endPos.z, sign(endPos.z - startPos.z) do
+				table.insert(positions, vector.new(x, startPos.y, z))
+			end
+
+			local nextX = x + sign(endPos.x - startPos.x)
+			if nextX >= math.min(startPos.x, endPos.x) and nextX <= math.max(startPos.x, endPos.x) then
+				for z = endPos.z, startPos.z, sign(startPos.z - endPos.z) do
+					table.insert(positions, vector.new(nextX, startPos.y, z))
+				end
+			end
+		end
+
+		for _, p in ipairs(positions) do
+			navi.navigate(p)
+			local isBlock, data = turtle.inspectDown()
+
+			if not isBlock or (isBlock and data.name == "minecraft:wheat" and data.metadata == 7) then
+				turtle.digDown()
+				turtle.placeDown()
+			end
+
+			if turtle.getItemCount(16) > 0 then
+				dumpIntoChest()
+			end
+		end
+	end
+end
+
+function dumpIntoChest()
+	navi.navigateAndRotate(chestLoc)
+
+	for slot = 2, 16 do
+		turtle.select(slot)
+		turtle.drop()
+	end
+end
+
+chestLoc, fields = dataFromDisk()
+
+args = {...}
+if #args == 0 then
+	while true do
+		dumpIntoChest()
+		print("Farming wheat")
+		print("Fuel level: "..tostring(turtle.getFuelLevel()))
+		farm()
+		dumpIntoChest()
+		print("Taking a rest")
+		print("Fuel level: "..tostring(turtle.getFuelLevel()))
+		os.sleep(300)
+	end
+else
+	if args[1] == "chest" then
+		chestLoc = navi.getLoc()
+		dataToDisk(chestLoc, fields)
+	elseif args[1] == "field" then
+		local newField = {x1 = tonumber(args[2]), x2 = tonumber(args[3]), z1 = tonumber(args[4]), z2 = tonumber(args[5]), y = tonumber(args[6])}
+		table.insert(fields, newField)
+		dataToDisk(chestLoc, fields)
+	end
+end
