@@ -105,7 +105,7 @@ if #args == 0 then
 		dumpIntoChest()
 		print("Taking a rest")
 		print("Fuel level: "..tostring(turtle.getFuelLevel()))
-		os.sleep(300)
+		os.sleep(1800)
 	end
 else
 	if args[1] == "chest" then
