@@ -87,6 +87,8 @@ function farm()
 
 				navi.navigateAndRotate(l)
 				turtle.place()
+			elseif not isBlockInFront then
+				turtle.place()
 			end
 
 			if turtle.getItemCount(16) > 0 then
