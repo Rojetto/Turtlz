@@ -1,0 +1,142 @@
+os.loadAPI("navi")
+os.loadAPI("fileutil")
+
+function dataFromDisk()
+	if fs.exists(".tree") then
+		local h = fs.open(".tree", "r")
+		local data = textutils.unserialize(h.readAll())
+		h.close()
+
+		return data.chestLoc, data.saplingChestLoc, data.fields
+	else
+		return {pos = vector.new(0, 0, 0), f = 0}, {pos = vector.new(0, 0, 0), f = 0}, {}
+	end
+end
+
+function dataToDisk(chestLoc, saplingChestLoc, fields)
+	local h = fs.open(".tree", "w")
+	h.write(textutils.serialize({chestLoc = chestLoc, saplingChestLoc = saplingChestLoc, fields = fields}))
+	h.close()
+end
+
+function sign(n)
+	if n > 0 then
+		return 1
+	elseif n < 0 then
+		return -1
+	else
+		return 0
+	end
+end
+
+function farm()
+	turtle.select(1)
+
+	for _, field in ipairs(fields) do
+		local startAndEnd = {}
+		startAndEnd[vector.new(field.x1, field.y, field.z1)] = vector.new(field.x2, field.y, field.z2)
+		startAndEnd[vector.new(field.x1, field.y, field.z2)] = vector.new(field.x2, field.y, field.z1)
+		startAndEnd[vector.new(field.x2, field.y, field.z1)] = vector.new(field.x1, field.y, field.z2)
+		startAndEnd[vector.new(field.x2, field.y, field.z2)] = vector.new(field.x1, field.y, field.z1)
+
+		local startPos = nil
+		local endPos = nil
+		local lastDistance = 100000
+
+		for s, e in pairs(startAndEnd) do
+			local distance = #(navi.findPath(navi.getPos(), s))
+
+			if distance < lastDistance then
+				lastDistance = distance
+				startPos = s
+				endPos = e
+			end
+		end
+
+		local locations = {}
+
+		for x = startPos.x, endPos.x, sign(endPos.x - startPos.x) * 2 * 3 do
+			for z = startPos.z, endPos.z, sign(endPos.z - startPos.z) * 3 do
+				table.insert(locations, {pos=vector.new(x, startPos.y, z), f=field.f})
+			end
+
+			local nextX = x + sign(endPos.x - startPos.x) * 3
+			if nextX >= math.min(startPos.x, endPos.x) and nextX <= math.max(startPos.x, endPos.x) then
+				for z = endPos.z, startPos.z, sign(startPos.z - endPos.z) * 3 do
+					table.insert(locations, {pos=vector.new(nextX, startPos.y, z), f=field.f})
+				end
+			end
+		end
+
+		for _, l in ipairs(locations) do
+			navi.navigateAndRotate(l)
+			
+			local isBlockInFront, frontData = turtle.inspect()
+
+			if isBlockInFront and frontData.name == "minecraft:log" then
+				turtle.dig()
+				navi.forward()
+
+				local isBlockUp, upData = turtle.inspectUp()
+
+				while isBlockUp and upData.name == "minecraft:log" do
+					turtle.digUp()
+					navi.up()
+					isBlockUp, upData = turtle.inspectUp()
+				end
+
+				navi.navigateAndRotate(l)
+				turtle.place()
+				navi.scan()
+			end
+
+			if turtle.getItemCount(16) > 0 then
+				dumpIntoChest()
+			end
+		end
+	end
+end
+
+function dumpIntoChest()
+	navi.navigateAndRotate(chestLoc)
+
+	for slot = 2, 16 do
+		turtle.select(slot)
+		turtle.drop()
+	end
+end
+
+function refillSaplings()
+	navi.navigateAndRotate(saplingChestLoc)
+	turtle.select(1)
+	turtle.suck(turtle.getItemSpace(1))
+end
+
+chestLoc, saplingChestLoc, fields = dataFromDisk()
+
+args = {...}
+if #args == 0 then
+	while true do
+		dumpIntoChest()
+		refillSaplings()
+		print("Felling trees")
+		print("Fuel level: "..tostring(turtle.getFuelLevel()))
+		farm()
+		dumpIntoChest()
+		print("Taking a rest")
+		print("Fuel level: "..tostring(turtle.getFuelLevel()))
+		os.sleep(1800)
+	end
+else
+	if args[1] == "chest" then
+		chestLoc = navi.getLoc()
+		dataToDisk(chestLoc, saplingChestLoc, fields)
+	elseif args[1] == "sapling" then
+		saplingChestLoc = navi.getLoc()
+		dataToDisk(chestLoc, saplingChestLoc, fields)
+	elseif args[1] == "field" then
+		local newField = {x1 = tonumber(args[2]), x2 = tonumber(args[3]), z1 = tonumber(args[4]), z2 = tonumber(args[5]), y = tonumber(args[6]), f = tonumber(args[7])}
+		table.insert(fields, newField)
+		dataToDisk(chestLoc, saplingChestLoc, fields)
+	end
+end
