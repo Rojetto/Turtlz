@@ -23,6 +23,7 @@ function fToDirection(fToConvert)
 end
 
 function forward()
+	scan()
 	if not turtle.detect() then
 		turtle.forward()
 		pos = pos + getFacingVector()
@@ -35,6 +36,7 @@ function forward()
 end
 
 function back()
+	scan()	
 	turtle.back()
 	pos = pos - getFacingVector()
 	locToDisk(pos, f)
@@ -42,6 +44,7 @@ function back()
 end
 
 function up()
+	scan()
 	if not turtle.detectUp() then
 		turtle.up()
 		pos = pos + vector.new(0, 1, 0)
@@ -54,6 +57,7 @@ function up()
 end
 
 function down()
+	scan()
 	if not turtle.detectDown() then
 		turtle.down()
 		pos = pos - vector.new(0, 1, 0)
@@ -66,6 +70,7 @@ function down()
 end
 
 function left()
+	scan()
 	turtle.turnLeft()
 	f = (f + 3) % 4
 	locToDisk(pos, f)
@@ -73,6 +78,7 @@ function left()
 end
 
 function right()
+	scan()
 	turtle.turnRight()
 	f = (f + 1) % 4
 	locToDisk(pos, f)

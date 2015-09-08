@@ -87,7 +87,6 @@ function farm()
 
 				navi.navigateAndRotate(l)
 				turtle.place()
-				navi.scan()
 			end
 
 			if turtle.getItemCount(16) > 0 then
