@@ -86,6 +86,7 @@ function farm()
 				end
 
 				navi.navigateAndRotate(l)
+				turtle.suck()
 				turtle.place()
 			elseif not isBlockInFront then
 				turtle.place()
