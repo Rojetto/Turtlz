@@ -94,6 +94,10 @@ function farm()
 			if turtle.getItemCount(16) > 0 then
 				dumpIntoChest()
 			end
+
+			if turtle.getItemCount(1) == 0 then
+				refillSaplings()
+			end
 		end
 	end
 end
